@@ -1,5 +1,131 @@
 console.log("Elderly Medicine Care App Loaded");
 
+/* ╔═══════════════════════════════════════════════════════════════════════════╗ */
+/* ║                      HOMEPAGE ANIMATIONS & INTERACTIONS                   ║ */
+/* ╚═══════════════════════════════════════════════════════════════════════════╝ */
+
+// Initialize homepage animations on page load
+document.addEventListener('DOMContentLoaded', () => {
+  initHomepageAnimations();
+});
+
+function initHomepageAnimations() {
+  // Add ripple effect to buttons with data-ripple attribute
+  const rippleButtons = document.querySelectorAll('[data-ripple]');
+  rippleButtons.forEach(btn => {
+    btn.addEventListener('mousedown', createRipple);
+    btn.addEventListener('touchstart', createRipple);
+  });
+
+  // Add smooth hover lift animation to feature items
+  const featureItems = document.querySelectorAll('.feature-item');
+  featureItems.forEach((item, index) => {
+    item.addEventListener('mouseenter', () => {
+      item.style.animation = 'none';
+      setTimeout(() => {
+        item.style.animation = '';
+      }, 50);
+    });
+  });
+}
+
+// Create ripple effect on button click
+function createRipple(e) {
+  const btn = this;
+  
+  // Prevent multiple ripples
+  if (btn.classList.contains('rippling')) return;
+  btn.classList.add('rippling');
+
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const x = e.clientX - rect.left - size / 2;
+  const y = e.clientY - rect.top - size / 2;
+
+  // Create ripple element
+  const ripple = document.createElement('span');
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = x + 'px';
+  ripple.style.top = y + 'px';
+  ripple.classList.add('ripple');
+
+  // Style the ripple
+  Object.assign(ripple.style, {
+    position: 'absolute',
+    background: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: '50%',
+    pointerEvents: 'none',
+    transform: 'scale(0)',
+    animation: 'ripple-animate 0.6s ease-out',
+    zIndex: '999'
+  });
+
+  // Add ripple animation if it doesn't exist
+  if (!document.querySelector('style[data-ripple]')) {
+    const style = document.createElement('style');
+    style.setAttribute('data-ripple', 'true');
+    style.textContent = `
+      @keyframes ripple-animate {
+        to {
+          transform: scale(4);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  btn.style.position = 'relative';
+  btn.style.overflow = 'hidden';
+  btn.appendChild(ripple);
+
+  // Remove ripple after animation
+  setTimeout(() => {
+    ripple.remove();
+    btn.classList.remove('rippling');
+  }, 600);
+}
+
+// Smooth scroll behavior for links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function (e) {
+    const href = this.getAttribute('href');
+    if (href === '#') return;
+    
+    e.preventDefault();
+    const target = document.querySelector(href);
+    if (target) {
+      target.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }
+  });
+});
+
+// Detect when elements enter viewport for additional animations
+const observerOptions = {
+  threshold: 0.1,
+  rootMargin: '0px 0px -100px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.opacity = '1';
+      entry.target.style.transform = 'translateY(0)';
+      observer.unobserve(entry.target);
+    }
+  });
+}, observerOptions);
+
+// Observe animated elements
+document.querySelectorAll('.hero-card, .feature-item, .trust-badge').forEach(el => {
+  observer.observe(el);
+});
+
+/* ═════════════════════════════════════════════════════════════════════════ */
+
 /* Bottom sheet open */
 function openSheet() {
     const sheet = document.getElementById('sheet');
