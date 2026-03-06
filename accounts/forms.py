@@ -82,3 +82,92 @@ class PrescriptionUploadForm(forms.Form):
             if ext not in ('jpg', 'jpeg', 'png'):
                 raise forms.ValidationError('Only JPG and PNG files are supported.')
         return image
+
+
+class PrescriptionMedicineForm(forms.Form):
+    """
+    Dynamic form for adding medicines from prescription with dosage details.
+    """
+    medicine_name = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Medicine name',
+        })
+    )
+    
+    dose_per_day = forms.IntegerField(
+        initial=1,
+        min_value=1,
+        max_value=10,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Doses per day',
+        })
+    )
+    
+    frequency_type = forms.ChoiceField(
+        choices=[
+            ('daily', 'Daily'),
+            ('weekly', 'Weekly (specific days)'),
+            ('custom_week', 'Custom days'),
+        ],
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
+    
+    food_timing = forms.ChoiceField(
+        choices=[
+            ('Before Food', 'Before Food'),
+            ('After Food', 'After Food'),
+        ],
+        initial='After Food',
+        widget=forms.Select(attrs={
+            'class': 'form-control',
+        })
+    )
+    
+    duration_days = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=365,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Duration in days (optional)',
+        })
+    )
+    
+    times_per_day = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'e.g., 8:00 AM, 2:00 PM, 8:00 PM (comma-separated)',
+            'type': 'text'
+        })
+    )
+    
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': 'form-control',
+            'placeholder': 'Additional notes (optional)',
+            'rows': 2
+        })
+    )
+
+
+class PrescriptionConfirmForm(forms.Form):
+    """
+    Form for confirming detected medicines from prescription.
+    User selects which medicines to add.
+    """
+    medicines = forms.CharField(
+        widget=forms.HiddenInput()
+    )
+    
+    # JSON string of selected medicines with their details
+    selected_medicines = forms.CharField(
+        widget=forms.HiddenInput()
+    )
+

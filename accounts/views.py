@@ -19,6 +19,10 @@ from functools import wraps
 
 from .models import EmergencyContact, Medicine, MedicineStatus, MedicineTime, UserProfile, Prescription, MedicineDoseLog
 from .forms import MedicineForm, UserProfileForm, UserProfilePhotoForm, PrescriptionUploadForm
+from .ocr_processor import (
+    load_medicine_dataset, preprocess_image, validate_prescription,
+    extract_text_with_ocr, extract_medicine_candidates, fuzzy_match_medicines
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -1175,18 +1179,19 @@ def quick_call_view(request):
 
 
 @login_required
+@login_required
 def prescription_reader_view(request):
-    """Prescription Reader page — upload a prescription image for OCR processing."""
+    """🆕 Smart Prescription Reader page — upload prescription image for advanced OCR processing."""
     try:
         form = PrescriptionUploadForm()
-        recent = Prescription.objects.filter(user=request.user).order_by('-created_at')[:5]
-        return render(request, 'prescription_reader.html', {
+        recent = Prescription.objects.filter(user=request.user).order_by('-uploaded_at')[:5]
+        return render(request, 'prescription_reader_smart.html', {
             'form': form,
             'recent_prescriptions': recent,
         })
     except Exception as e:
         logger.error(f"Error rendering prescription reader: {e}")
-        return render(request, 'prescription_reader.html', {
+        return render(request, 'prescription_reader_smart.html', {
             'form': PrescriptionUploadForm(),
             'recent_prescriptions': [],
             'error': 'Unable to load prescription reader',
@@ -1197,11 +1202,13 @@ def prescription_reader_view(request):
 @require_http_methods(["POST"])
 def prescription_process(request):
     """
-    AJAX endpoint — accepts prescription image, runs OCR, matches medicines.
+    🆕 SMART PRESCRIPTION DETECTION SYSTEM
+    AJAX endpoint — uploads prescription image, runs advanced OCR with preprocessing,
+    validates prescription, and matches medicines with fuzzy matching.
     Production-ready with validation, error handling, and rate limiting.
     """
     try:
-        # Validate form
+        # ===== STEP 1: VALIDATE FORM & IMAGE =====
         form = PrescriptionUploadForm(request.POST, request.FILES)
         if not form.is_valid():
             errors = []
@@ -1222,7 +1229,7 @@ def prescription_process(request):
                 'error': error_msg
             }, status=400)
         
-        # Create prescription record with transaction safety
+        # ===== STEP 2: SAVE PRESCRIPTION RECORD =====
         try:
             with transaction.atomic():
                 prescription = Prescription.objects.create(
@@ -1230,12 +1237,6 @@ def prescription_process(request):
                     image=image_file,
                     extracted_text='',
                 )
-        except IntegrityError as e:
-            logger.error(f"Database integrity error: {e}")
-            return JsonResponse({
-                'success': False,
-                'error': 'Failed to save prescription. Please try again.'
-            }, status=500)
         except Exception as e:
             logger.error(f"Error creating prescription: {e}")
             return JsonResponse({
@@ -1243,108 +1244,110 @@ def prescription_process(request):
                 'error': 'Unable to save prescription record'
             }, status=500)
         
-        # Run OCR with robust error handling
+        # ===== STEP 3: EXTRACT TEXT WITH OCR (WITH PREPROCESSING) =====
         extracted_text = ''
         ocr_available = False
-        ocr_error = None
+        prescription_valid = False
+        validation_error = None
         
         try:
-            import pytesseract
-            from PIL import Image
+            # Extract text using advanced OCR with OpenCV preprocessing
+            extracted_text, ocr_available, ocr_error = extract_text_with_ocr(
+                prescription.image.path,
+                use_preprocessing=True
+            )
             
-            # Auto-detect Tesseract path on Windows
-            tesseract_paths = [
-                r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-                r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
-                os.path.join('C:\\\\Users', os.environ.get('USERNAME', ''), 'AppData', 'Local', 'Programs', 'Tesseract-OCR', 'tesseract.exe')
-            ]
-            
-            tesseract_found = False
-            for tp in tesseract_paths:
-                if os.path.isfile(tp):
-                    pytesseract.pytesseract.tesseract_cmd = tp
-                    tesseract_found = True
-                    break
-            
-            if not tesseract_found:
-                logger.warning('Tesseract OCR not found on system')
-                ocr_available = False
-            else:
+            if ocr_available and extracted_text:
+                # Save extracted text to database
                 try:
-                    img = Image.open(prescription.image.path)
-                    img.verify()
-                    img = Image.open(prescription.image.path)
-                    
-                    extracted_text = pytesseract.image_to_string(img)
-                    
-                    if extracted_text and len(extracted_text.strip()) > 0:
-                        extracted_text = extracted_text.strip()[:5000]
-                        try:
-                            prescription.extracted_text = extracted_text
-                            prescription.save(update_fields=['extracted_text'])
-                            ocr_available = True
-                        except Exception as e:
-                            logger.error(f"Failed to save OCR text: {e}")
-                            ocr_available = False
-                    else:
-                        logger.info("OCR returned empty text")
-                        ocr_available = False
-                        
-                except (IOError, ValueError) as e:
-                    logger.error(f"Image processing error: {e}")
-                    ocr_available = False
-                    ocr_error = "Could not process image file"
+                    prescription.extracted_text = extracted_text
+                    prescription.save(update_fields=['extracted_text'])
                 except Exception as e:
-                    logger.error(f"OCR execution error: {e}")
-                    ocr_available = False
-                    ocr_error = "OCR processing failed"
-                    
-        except ImportError:
-            logger.warning('pytesseract or PIL not installed')
-            ocr_available = False
-            ocr_error = "OCR module not available"
-        except Exception as e:
-            logger.error(f'Unexpected OCR error: {e}')
-            ocr_available = False
-            ocr_error = str(e)[:100]
+                    logger.error(f"Failed to save OCR text: {e}")
+                
+                # ===== STEP 4: VALIDATE PRESCRIPTION =====
+                prescription_valid, validation_error = validate_prescription(extracted_text)
+                
+                if not prescription_valid:
+                    logger.info(f"Prescription validation failed: {validation_error}")
+                    return JsonResponse({
+                        'success': False,
+                        'error': validation_error,
+                        'prescription_id': prescription.id,
+                        'image_url': prescription.image.url if prescription.image else ''
+                    }, status=400)
+            else:
+                # OCR not available or failed
+                logger.warning(f"OCR failed: {ocr_error}")
+                return JsonResponse({
+                    'success': False,
+                    'error': ocr_error or 'Unable to extract text from image. Please try again.',
+                    'prescription_id': prescription.id,
+                    'image_url': prescription.image.url if prescription.image else ''
+                }, status=400)
         
-        # Extract and filter medicine names
-        try:
-            detected_medicines = []
-            if extracted_text:
-                detected_medicines = _extract_medicine_names(extracted_text)
-                detected_medicines = list(set([
-                    m for m in detected_medicines if sanitize_medicine_name(m)
-                ]))
         except Exception as e:
-            logger.error(f"Error extracting medicine names: {e}")
+            logger.error(f"OCR processing error: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'OCR processing failed: {str(e)[:100]}',
+                'prescription_id': prescription.id,
+                'image_url': prescription.image.url if prescription.image else ''
+            }, status=500)
+        
+        # ===== STEP 5: EXTRACT MEDICINE CANDIDATES =====
+        detected_medicines = []
+        try:
+            candidates = extract_medicine_candidates(extracted_text)
+            detected_medicines = [
+                m for m in candidates 
+                if sanitize_medicine_name(m)
+            ][:50]  # Limit to 50 medicines
+            
+            logger.info(f"Extracted {len(detected_medicines)} medicine candidates")
+            
+        except Exception as e:
+            logger.error(f"Error extracting medicine candidates: {e}")
             detected_medicines = []
         
-        # Match against user's medicines
+        # ===== STEP 6: FUZZY MATCH WITH DATASET & USER MEDICINES =====
+        matches = []
         try:
+            # Load medicine dataset from CSV
+            medicine_dataset = load_medicine_dataset()
+            
+            # Get user's existing medicines
             user_medicines = list(
                 Medicine.objects.filter(user=request.user)
                 .values_list('name', flat=True)
                 .distinct()
             )
-            matches = _match_medicines(detected_medicines, user_medicines)
+            
+            # Fuzzy match detected medicines
+            matches = fuzzy_match_medicines(
+                detected_medicines,
+                medicine_dataset=medicine_dataset,
+                user_medicines=user_medicines,
+                threshold=85  # 85% similarity threshold
+            )
+            
+            logger.info(f"Fuzzy matched {len([m for m in matches if m['matched']])} medicines")
+            
         except Exception as e:
-            logger.error(f"Error matching medicines: {e}")
-            matches = [{"detected": m, "matched": None, "confidence": 0} for m in detected_medicines]
+            logger.error(f"Error in fuzzy matching: {e}")
+            matches = [{"detected": d, "matched": None, "confidence": 0} for d in detected_medicines]
         
-        # Return success response
+        # ===== STEP 7: RETURN SUCCESS RESPONSE =====
         response = {
             'success': True,
             'image_url': prescription.image.url if prescription.image else '',
             'prescription_id': prescription.id,
-            'extracted_text': extracted_text,
+            'extracted_text': extracted_text[:1000],  # Limit text in response
             'ocr_available': ocr_available,
             'detected_medicines': detected_medicines,
             'matches': matches or [],
+            'message': f'✓ Detected {len(detected_medicines)} medicine(s) from prescription'
         }
-        
-        if ocr_error:
-            response['ocr_warning'] = ocr_error
         
         return JsonResponse(response)
         
@@ -1356,12 +1359,15 @@ def prescription_process(request):
         }, status=500)
 
 
+
 @login_required
 @require_http_methods(["POST"])
 def prescription_add_medicines(request):
     """
-    AJAX endpoint — add medicines from prescription with full validation.
-    Production-ready with transaction safety, duplicate prevention, and error handling.
+    🆕 ENHANCED PRESCRIPTION MEDICINE ADDITION
+    AJAX endpoint — add medicines from prescription with full schedule details.
+    Handles dose per day, times, frequency, duration, and food timing.
+    Production-ready with transaction safety, duplicate prevention, and validation.
     """
     try:
         import json
@@ -1375,22 +1381,25 @@ def prescription_add_medicines(request):
                 'error': 'Invalid JSON format'
             }, status=400)
         
-        # Validate medicines list
+        # Extract medicines with schedule details
         medicines_to_add = data.get('medicines', [])
-        is_valid, cleaned_meds, error_msg = validate_medicine_list(medicines_to_add)
-        if not is_valid:
+        
+        if not isinstance(medicines_to_add, list) or len(medicines_to_add) == 0:
             return JsonResponse({
                 'success': False,
-                'error': error_msg
+                'error': 'No medicines provided'
+            }, status=400)
+        
+        if len(medicines_to_add) > MAX_MEDICINES_PER_REQUEST:
+            return JsonResponse({
+                'success': False,
+                'error': f'Too many medicines. Max {MAX_MEDICINES_PER_REQUEST} at once'
             }, status=400)
         
         added_count = 0
         skipped_count = 0
         skipped_names = []
         errors = {}
-        
-        # Deduplicate input
-        cleaned_meds = list(set(cleaned_meds))
         
         # Check for duplicates with existing user medicines
         existing_meds = set(
@@ -1399,74 +1408,149 @@ def prescription_add_medicines(request):
             .distinct()
         )
         
-        # Process each medicine with transaction safety
-        for med_name in cleaned_meds:
-            med_lower = med_name.lower()
-            exists_case_insensitive = any(
-                m.lower() == med_lower for m in existing_meds
-            )
-            
-            if exists_case_insensitive:
-                skipped_count += 1
-                skipped_names.append(med_name)
-                continue
-            
+        # ===== PROCESS EACH MEDICINE =====
+        for med_data in medicines_to_add:
             try:
-                # Create medicine and related records in atomic transaction
+                # Extract medicine details from payload
+                med_name = med_data.get('name') if isinstance(med_data, dict) else med_data
+                if not med_name:
+                    continue
+                
+                # Sanitize medicine name
+                sanitized_name = sanitize_medicine_name(med_name)
+                if not sanitized_name:
+                    skipped_count += 1
+                    skipped_names.append(med_name)
+                    errors[med_name] = "Invalid medicine name"
+                    continue
+                
+                # Check if medicine already exists (case-insensitive)
+                med_lower = sanitized_name.lower()
+                exists_case_insensitive = any(
+                    m.lower() == med_lower for m in existing_meds
+                )
+                
+                if exists_case_insensitive:
+                    skipped_count += 1
+                    skipped_names.append(sanitized_name)
+                    continue
+                
+                # Extract optional schedule details (with sensible defaults)
+                dose_per_day = 1
+                frequency_type = 'daily'
+                food_timing = 'After Food'
+                duration_days = None
+                times_str = None
+                notes = 'Added from prescription scan'
+                
+                if isinstance(med_data, dict):
+                    dose_per_day = int(med_data.get('dose_per_day', 1))
+                    frequency_type = med_data.get('frequency_type', 'daily')
+                    food_timing = med_data.get('food_timing', 'After Food')
+                    duration_days = med_data.get('duration_days')
+                    times_str = med_data.get('times_per_day')
+                    med_notes = med_data.get('notes', '')
+                    if med_notes:
+                        notes = f"Added from prescription scan - {med_notes}"
+                
+                # Validate dose_per_day
+                dose_per_day = max(1, min(10, dose_per_day))
+                
+                # Determine default times based on dose_per_day
+                default_times = []
+                if dose_per_day == 1:
+                    default_times = ['08:00']
+                elif dose_per_day == 2:
+                    default_times = ['08:00', '20:00']
+                elif dose_per_day == 3:
+                    default_times = ['08:00', '14:00', '20:00']
+                else:
+                    # For 4+ doses
+                    default_times = ['08:00', '12:00', '16:00', '20:00']
+                
+                # Parse custom times if provided
+                medicine_times = default_times
+                if times_str:
+                    try:
+                        custom_times = [t.strip() for t in times_str.split(',')]
+                        medicine_times = custom_times[:dose_per_day]
+                    except:
+                        medicine_times = default_times
+                
+                # ===== CREATE MEDICINE WITH TRANSACTION SAFETY =====
                 with transaction.atomic():
                     medicine = Medicine.objects.create(
                         user=request.user,
-                        name=med_name,
-                        frequency_type='daily',
-                        dose_per_day=1,
-                        food_timing='After Food',
+                        name=sanitized_name,
+                        frequency_type=frequency_type,
+                        dose_per_day=dose_per_day,
+                        food_timing=food_timing,
+                        duration_days=duration_days,
                         status='active',
                         is_reminder_enabled=True,
-                        notes='Added from prescription',
-                        drug_classification=classify_medicine(med_name)
+                        notes=notes,
+                        drug_classification=classify_medicine(sanitized_name)
                     )
                     
-                    med_time = MedicineTime.objects.create(
-                        medicine=medicine,
-                        time=dt_time(8, 0)
-                    )
-                    
+                    # Create MedicineTime entries for each scheduled time
                     today = date.today()
-                    MedicineStatus.objects.get_or_create(
-                        medicine_time=med_time,
-                        date=today,
-                        defaults={'is_taken': False, 'is_missed': False}
-                    )
+                    for time_str in medicine_times:
+                        try:
+                            # Parse time string (handle multiple formats)
+                            if ':' in time_str:
+                                hour, minute = map(int, time_str.split(':'))
+                            else:
+                                hour = int(time_str)
+                                minute = 0
+                            
+                            med_time = dt_time(hour, minute)
+                            med_time_obj = MedicineTime.objects.create(
+                                medicine=medicine,
+                                time=med_time
+                            )
+                            
+                            # Create initial status record
+                            MedicineStatus.objects.get_or_create(
+                                medicine_time=med_time_obj,
+                                date=today,
+                                defaults={'is_taken': False, 'is_missed': False}
+                            )
+                        except (ValueError, Exception) as time_err:
+                            logger.warning(f"Error creating medicine time for {med_time_obj}: {time_err}")
                     
                     added_count += 1
-                    existing_meds.add(med_name)
+                    existing_meds.add(sanitized_name)
+                    logger.info(f"Added medicine '{sanitized_name}' with {dose_per_day} dose(s) per day")
                     
             except IntegrityError as e:
                 logger.warning(f"Duplicate medicine during insertion: {med_name} - {e}")
                 skipped_count += 1
-                skipped_names.append(med_name)
-                errors[med_name] = "Already exists (race condition)"
+                skipped_names.append(med_name if isinstance(med_name, str) else str(med_name))
+                errors[med_name if isinstance(med_name, str) else str(med_name)] = "Already exists"
                 
             except ValidationError as e:
                 logger.error(f"Validation error for {med_name}: {e}")
                 skipped_count += 1
-                skipped_names.append(med_name)
-                errors[med_name] = "Invalid medicine data"
+                skipped_names.append(med_name if isinstance(med_name, str) else str(med_name))
+                errors[med_name if isinstance(med_name, str) else str(med_name)] = "Invalid medicine data"
                 
             except Exception as e:
                 logger.error(f"Error creating medicine '{med_name}': {e}")
                 skipped_count += 1
-                skipped_names.append(med_name)
-                errors[med_name] = str(e)[:100]
+                skipped_names.append(med_name if isinstance(med_name, str) else str(med_name))
+                errors[med_name if isinstance(med_name, str) else str(med_name)] = str(e)[:100]
         
-        # Build response
+        # ===== BUILD RESPONSE =====
         response = {
             'success': True,
             'added_count': added_count,
             'skipped_count': skipped_count,
             'skipped_names': skipped_names,
-            'message': f'Added {added_count} medicine(s). {skipped_count} skipped.'
+            'message': f'✓ Added {added_count} medicine(s) to your list.'
         }
+        
+        if skipped_count > 0:
+            response['message'] += f' {skipped_count} medicine(s) were skipped (duplicates or invalid).'
         
         if errors:
             response['errors'] = errors
@@ -1479,6 +1563,7 @@ def prescription_add_medicines(request):
             'success': False,
             'error': 'An unexpected error occurred'
         }, status=500)
+
 
 
 def _extract_medicine_names(text):

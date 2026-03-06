@@ -1,0 +1,930 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Prescription Reader</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* ===== BASE ===== */
+        :root {
+            --bg: #f6f8fb;
+            --card: #ffffff;
+            --text: #0f172a;
+            --muted: #6b7280;
+            --primary: #2563eb;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --warning: #f59e0b;
+            --shadow: 0 8px 24px rgba(0, 0, 0, .06);
+            --shadow-lg: 0 20px 25px rgba(0, 0, 0, .1);
+            --radius: 14px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto;
+        }
+
+        /* ===== HEADER ===== */
+        .dashboard-header {
+            background: #0b3a5a;
+            color: #ffffff;
+            padding: 14px 16px;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            flex: 1;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+        }
+
+        .empty-space {
+            width: 40px;
+        }
+
+        /* ===== WRAPPER ===== */
+        .dashboard-wrapper {
+            max-width: 500px;
+            margin: 0 auto;
+            background: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            padding: 16px;
+            flex: 1;
+        }
+
+        /* ===== UPLOAD AREA ===== */
+        .upload-card {
+            background: var(--card);
+            border: 2px dashed #cbd5e1;
+            border-radius: var(--radius);
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .upload-card:hover {
+            border-color: var(--primary);
+            background: #f8fafc;
+            transform: translateY(-2px);
+        }
+
+        .upload-card.dragover {
+            border-color: var(--primary);
+            background: #eff6ff;
+            box-shadow: var(--shadow);
+        }
+
+        .upload-icon {
+            font-size: 56px;
+            margin-bottom: 12px;
+            display: inline-block;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 8px;
+            color: var(--primary);
+        }
+
+        .upload-hint {
+            font-size: 13px;
+            color: var(--muted);
+            margin: 0;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* ===== IMAGE PREVIEW ===== */
+        .preview-container {
+            display: none;
+            margin-bottom: 20px;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            position: relative;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .preview-image {
+            width: 100%;
+            display: block;
+            max-height: 350px;
+            object-fit: cover;
+        }
+
+        .change-img-btn {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: 600;
+        }
+
+        .change-img-btn:hover {
+            background: rgba(0, 0, 0, 0.85);
+        }
+
+        /* ===== ACTION BUTTONS ===== */
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 14px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #0b3a5a;
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #092e48;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(11, 58, 90, 0.3);
+        }
+
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: var(--text);
+            width: 100%;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+
+        /* ===== LOADING STATE ===== */
+        .loading-container {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .loading-subtext {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        /* ===== RESULTS AREA ===== */
+        .results-container {
+            display: none;
+            margin-top: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin: 20px 0 14px;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        /* ===== EXTRACTED TEXT ===== */
+        .text-card {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 13px;
+            color: var(--text);
+            white-space: pre-wrap;
+            margin-bottom: 20px;
+            max-height: 120px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            line-height: 1.5;
+        }
+
+        /* ===== MEDICINE CARDS ===== */
+        .med-match-card {
+            background: var(--card);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            padding: 14px;
+            margin-bottom: 12px;
+            border-left: 5px solid;
+            border-left-color: var(--success);
+            transition: all 0.2s;
+        }
+
+        .med-match-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .med-match-card.high-confidence {
+            border-left-color: var(--success);
+        }
+
+        .med-match-card.medium-confidence {
+            border-left-color: var(--warning);
+        }
+
+        .med-match-card.low-confidence {
+            border-left-color: #9ca3af;
+        }
+
+        .med-match-card.no-match {
+            border-left-color: var(--danger);
+            opacity: 0.8;
+        }
+
+        .med-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .detected-name {
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--text);
+        }
+
+        .confidence-badge {
+            background: #e0e7ff;
+            color: var(--primary);
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .confidence-badge.high {
+            background: #dcfce7;
+            color: var(--success);
+        }
+
+        .confidence-badge.medium {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .confidence-badge.low {
+            background: #f3f4f6;
+            color: var(--muted);
+        }
+
+        .match-info {
+            font-size: 13px;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .db-match {
+            font-weight: 600;
+            color: var(--success);
+            background: #f0fdf4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .no-match-text {
+            color: var(--danger);
+            font-style: italic;
+        }
+
+        /* ===== ALERTS ===== */
+        .alert {
+            padding: 14px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #7f1d1d;
+            border-left: 4px solid var(--danger);
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #15803d;
+            border-left: 4px solid var(--success);
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border-left: 4px solid var(--warning);
+        }
+
+        /* ===== CONFIRMATION UI ===== */
+        .confirmation-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .checkbox-item:hover {
+            border-color: var(--primary);
+            background: #f1f5f9;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .checkbox-label {
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .checkbox-label .med-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .checkbox-label .med-info {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        /* ===== FOOTER ===== */
+        .footer-text {
+            text-align: center;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 480px) {
+            .container {
+                padding: 12px;
+            }
+
+            .upload-card {
+                padding: 30px 15px;
+            }
+
+            .btn {
+                font-size: 14px;
+                padding: 12px 14px;
+            }
+
+            .upload-icon {
+                font-size: 48px;
+            }
+
+            .spinner {
+                width: 40px;
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-wrapper">
+        <!-- HEADER -->
+        <div class="dashboard-header">
+            <a href="{% url 'dashboard' %}" class="back-btn">←</a>
+            <div class="header-title">
+                <span>📋</span>
+                <span>Prescription Reader</span>
+            </div>
+            <div class="empty-space"></div>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="container">
+
+            <!-- STEP 1: UPLOAD -->
+            <div id="upload-section">
+                <div class="upload-card" id="upload-card">
+                    <div class="upload-icon">📸</div>
+                    <p class="upload-text">Upload Prescription</p>
+                    <p class="upload-hint">Click or drag a photo of your prescription (JPG, PNG)</p>
+                </div>
+                <input type="file" id="prescription-file-input" class="file-input" accept="image/jpeg,image/png,image/jpg">
+
+                <!-- IMAGE PREVIEW -->
+                <div class="preview-container" id="preview-container">
+                    <img id="preview-image" class="preview-image" alt="Preview">
+                    <button type="button" class="change-img-btn" onclick="document.getElementById('prescription-file-input').click()">Change Image</button>
+                </div>
+
+                <!-- ACTION BUTTONS -->
+                <div class="btn-group">
+                    <button type="button" class="btn btn-primary" id="process-btn" style="display: none;">
+                        <span>⚡</span>
+                        <span>Process Prescription</span>
+                    </button>
+                </div>
+
+                <!-- ERROR ALERT -->
+                <div id="error-alert" class="alert alert-error" style="display: none;">
+                    <span class="alert-icon">❌</span>
+                    <div class="alert-content">
+                        <strong>Error</strong>
+                        <p id="error-msg" style="margin: 4px 0 0 0;"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STEP 2: PROCESSING -->
+            <div class="loading-container" id="loading-container">
+                <div class="spinner"></div>
+                <div class="loading-text">Processing Prescription...</div>
+                <div class="loading-subtext">Extracting text with AI (OCR with preprocessing)</div>
+            </div>
+
+            <!-- STEP 3: RESULTS -->
+            <div class="results-container" id="results-container">
+
+                <!-- SUCCESS MESSAGE -->
+                <div id="success-alert" class="alert alert-success" style="display: none;">
+                    <span class="alert-icon">✓</span>
+                    <div class="alert-content">
+                        <strong>Prescription Detected!</strong>
+                        <p id="success-msg" style="margin: 4px 0 0 0;"></p>
+                    </div>
+                </div>
+
+                <!-- WARNING MESSAGE -->
+                <div id="warning-alert" class="alert alert-warning" style="display: none;">
+                    <span class="alert-icon">⚠️</span>
+                    <div class="alert-content">
+                        <strong>Note</strong>
+                        <p id="warning-msg" style="margin: 4px 0 0 0;"></p>
+                    </div>
+                </div>
+
+                <!-- EXTRACTED TEXT -->
+                <div id="text-section" style="display: none;">
+                    <div class="section-title">Extracted Text</div>
+                    <div class="text-card" id="extracted-text"></div>
+                </div>
+
+                <!-- DETECTED MEDICINES -->
+                <div id="medicines-section" style="display: none;">
+                    <div class="section-title">Detected Medicines</div>
+                    <div id="medicines-list"></div>
+                </div>
+
+                <!-- CONFIRMATION UI -->
+                <div class="confirmation-container" id="confirmation-container" style="display: none;">
+                    <div class="section-title">Select Medicines to Add</div>
+                    <div class="checkbox-group" id="checkbox-group"></div>
+
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-primary" id="add-medicines-btn">
+                            <span>✓</span>
+                            <span id="add-btn-text">Add Selected Medicines</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="location.reload()">
+                            <span>↻</span>
+                            <span>Scan Different Prescription</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SUCCESS MESSAGE AFTER ADD -->
+                <div id="complete-alert" class="alert alert-success" style="display: none;">
+                    <span class="alert-icon">✅</span>
+                    <div class="alert-content">
+                        <strong>Medicines Added!</strong>
+                        <p id="complete-msg" style="margin: 4px 0 0 0;">Your medicines have been added to your medicine list. You can manage them from the Manage Medicines page.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer-text">
+                💡 Tip: Upload a clear, well-lit photo of your prescription for best results.
+            </div>
+
+        </div>
+    </div>
+
+    <!-- CSRF Token -->
+    <input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+
+    <script>
+        // ===== DOM ELEMENTS =====
+        const fileInput = document.getElementById('prescription-file-input');
+        const uploadCard = document.getElementById('upload-card');
+        const previewContainer = document.getElementById('preview-container');
+        const previewImage = document.getElementById('preview-image');
+        const processBtn = document.getElementById('process-btn');
+        const loadingContainer = document.getElementById('loading-container');
+        const resultsContainer = document.getElementById('results-container');
+        const uploadSection = document.getElementById('upload-section');
+
+        let prescriptionId = null;
+        let selectedMedicines = [];
+
+        // ===== FILE UPLOAD HANDLING =====
+        fileInput.addEventListener('change', handleFileSelect);
+        uploadCard.addEventListener('click', () => fileInput.click());
+        uploadCard.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadCard.classList.add('dragover');
+        });
+        uploadCard.addEventListener('dragleave', () => {
+            uploadCard.classList.remove('dragover');
+        });
+        uploadCard.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadCard.classList.remove('dragover');
+            fileInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        });
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                previewContainer.style.display = 'block';
+                processBtn.style.display = 'flex';
+                uploadCard.style.display = 'none';
+                hideAlert('error');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // ===== PROCESS PRESCRIPTION =====
+        processBtn.addEventListener('click', processPrescription);
+
+        async function processPrescription() {
+            const file = fileInput.files[0];
+            if (!file) {
+                showAlert('error', 'Please select an image first');
+                return;
+            }
+
+            processBtn.disabled = true;
+            loadingContainer.style.display = 'block';
+            resultsContainer.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const response = await fetch('{% url "prescription_process" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.getElementById('csrf-token').value
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+                loadingContainer.style.display = 'none';
+                resultsContainer.style.display = 'block';
+
+                if (data.success) {
+                    prescriptionId = data.prescription_id;
+                    displayResults(data);
+                } else {
+                    showAlert('error', data.error || 'Error processing prescription');
+                    processBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('error', 'Network error. Please try again.');
+                loadingContainer.style.display = 'none';
+                resultsContainer.style.display = 'none';
+                processBtn.disabled = false;
+            }
+        }
+
+        // ===== DISPLAY RESULTS =====
+        function displayResults(data) {
+            // Show success message
+            showAlert('success', data.message || 'Prescription processed successfully!');
+
+            // Show extracted text
+            if (data.extracted_text) {
+                document.getElementById('text-section').style.display = 'block';
+                document.getElementById('extracted-text').textContent = data.extracted_text;
+            }
+
+            // Show detected medicines
+            if (data.matches && data.matches.length > 0) {
+                document.getElementById('medicines-section').style.display = 'block';
+                displayMedicines(data.matches);
+                showConfirmationUI(data.matches);
+            } else {
+                showAlert('warning', 'No medicines were detected. Please verify your prescription image.');
+            }
+        }
+
+        function displayMedicines(matches) {
+            const list = document.getElementById('medicines-list');
+            list.innerHTML = '';
+
+            matches.forEach(match => {
+                const card = document.createElement('div');
+                const confidence = match.confidence || 0;
+                let confidenceClass = 'high-confidence';
+                let confidenceBadgeClass = 'high';
+
+                if (confidence < 70) {
+                    confidenceClass = 'low-confidence';
+                    confidenceBadgeClass = 'low';
+                } else if (confidence < 85) {
+                    confidenceClass = 'medium-confidence';
+                    confidenceBadgeClass = 'medium';
+                }
+
+                if (!match.matched) {
+                    confidenceClass = 'no-match';
+                }
+
+                card.className = `med-match-card ${confidenceClass}`;
+                card.innerHTML = `
+                    <div class="med-row">
+                        <span class="detected-name">${match.detected}</span>
+                        <span class="confidence-badge ${confidenceBadgeClass}">${confidence}%</span>
+                    </div>
+                    <div class="match-info">
+                        ${match.matched ? `<span>→ Matched: <span class="db-match">${match.matched}</span></span>` : '<span class="no-match-text">No match found</span>'}
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        function showConfirmationUI(matches) {
+            document.getElementById('confirmation-container').style.display = 'block';
+            const group = document.getElementById('checkbox-group');
+            group.innerHTML = '';
+
+            selectedMedicines = [];
+
+            matches.forEach((match, idx) => {
+                if (!match.matched) return;
+
+                const label = document.createElement('label');
+                label.className = 'checkbox-item';
+
+                const checked = match.confidence >= 85 ? 'checked' : '';
+
+                label.innerHTML = `
+                    <input type="checkbox" value="${match.matched}" ${checked} onchange="updateSelectedMedicines()">
+                    <div class="checkbox-label">
+                        <div class="med-name">${match.matched}</div>
+                        <div class="med-info">From: ${match.detected} (${match.confidence}% match)</div>
+                    </div>
+                `;
+
+                group.appendChild(label);
+
+                if (checked) {
+                    selectedMedicines.push(match.matched);
+                }
+            });
+
+            document.getElementById('add-medicines-btn').addEventListener('click', addMedicines);
+        }
+
+        function updateSelectedMedicines() {
+            selectedMedicines = [];
+            document.querySelectorAll('#checkbox-group input[type="checkbox"]:checked').forEach(checkbox => {
+                selectedMedicines.push(checkbox.value);
+            });
+
+            const btnText = document.getElementById('add-btn-text');
+            if (selectedMedicines.length > 0) {
+                btnText.textContent = `Add ${selectedMedicines.length} Medicine${selectedMedicines.length > 1 ? 's' : ''}`;
+            } else {
+                btnText.textContent = 'Add Selected Medicines';
+            }
+        }
+
+        // ===== ADD MEDICINES =====
+        async function addMedicines() {
+            if (selectedMedicines.length === 0) {
+                showAlert('warning', 'Please select at least one medicine');
+                return;
+            }
+
+            document.getElementById('add-medicines-btn').disabled = true;
+
+            try {
+                const response = await fetch('{% url "prescription_add_medicines" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.getElementById('csrf-token').value
+                    },
+                    body: JSON.stringify({
+                        medicines: selectedMedicines
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('confirmation-container').style.display = 'none';
+                    document.getElementById('complete-alert').style.display = 'block';
+                    document.getElementById('medicines-section').style.display = 'none';
+
+                    // Redirect after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '{% url "manage_medicine" %}';
+                    }, 2000);
+                } else {
+                    showAlert('error', data.error || 'Error adding medicines');
+                    document.getElementById('add-medicines-btn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('error', 'Network error. Please try again.');
+                document.getElementById('add-medicines-btn').disabled = false;
+            }
+        }
+
+        // ===== UTILITY FUNCTIONS =====
+        function showAlert(type, message) {
+            const alertId = type + '-alert';
+            const msgId = type + '-msg';
+            const elem = document.getElementById(alertId);
+            const msgElem = document.getElementById(msgId);
+
+            if (msgElem) msgElem.textContent = message;
+            if (elem) elem.style.display = 'block';
+        }
+
+        function hideAlert(type) {
+            const alertId = type + '-alert';
+            const elem = document.getElementById(alertId);
+            if (elem) elem.style.display = 'none';
+        }
+    </script>
+</body>
+
+</html>
